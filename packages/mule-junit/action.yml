@@ -1,0 +1,103 @@
+name: 'Summary - Publish test results'
+description: 'Summary - Publish test results'
+inputs:
+  badge-label:
+    required: true
+    description: Label for the badge
+  badge-suffix:
+    required: true
+    description: Suffix file badge
+  path-report:
+    required: true
+    description: File path to the junit report  
+  path-directoryreports:
+    required: true
+    description: Directory path for test reports  
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Debug action
+      shell: bash
+      run: |
+        echo " "
+        echo "*****************************************************"
+        echo "Summary - Publish test results"
+        echo "*****************************************************"
+        echo " "
+        echo "  Input variables: "
+        echo "    badge-label: ${{ inputs.badge-label }}"
+        echo "    badge-suffix: ${{ inputs.badge-suffix }}"
+        echo "    path-report: ${{ inputs.path-report}}"        
+        echo "    path-directoryreports: ${{ inputs.path-directoryreports}}"
+        echo " "
+
+    - name: Upload test reports to job
+      if: ${{ hashFiles(inputs.path-report) != '' }}
+      uses: actions/upload-artifact@master
+      with:
+        name: test-report
+        path: ${{inputs.path-directoryreports}}
+
+    # ***********************************************************
+    # https://github.com/EnricoMi/publish-unit-test-result-action
+    # Note: permissions on job, check documentation
+    # ***********************************************************
+    - name: Publish test results in summary section
+      id: unit-test-results
+      if: ${{ hashFiles(inputs.path-report) != '' }}
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        files: |
+          ${{inputs.path-report}}
+        check_name: Test Results
+
+    - name: Set badge color
+      shell: bash
+      run: |
+        echo " "
+        echo "*****************************************************"
+        echo "JUnit - Set badge color for success or failure"
+        echo "*****************************************************"
+        echo " "
+        echo '  The JUnit results parse with json: ${{steps.unit-test-results.outputs.json}}'
+        echo " "
+
+        # Verify if the test report was created
+        if [[ "$configuration_skiptests" != "true" ]]; then
+          echo "  The test cases were not skipped, parsing the Unit Test json result"
+          label_tests=$(echo '${{steps.unit-test-results.outputs.json}}' | jq -r ".formatted.stats.tests")
+          echo "  Label test: $label_tests"
+          label_run=$(echo '${{steps.unit-test-results.outputs.json}}' | jq -r ".formatted.stats.runs")
+          echo "  Label run: $label_run"
+          label_conclusion=$(echo '${{steps.unit-test-results.outputs.json}}' | jq -r ".conclusion")
+          echo "  Label conclusion: $label_conclusion"
+          echo "BADGE_STATUS=$label_tests tests, $label_run runs: $label_conclusion" >> $GITHUB_ENV
+          echo "  Badge status: $BADGE_STATUS"
+          case $label_conclusion in
+            success)
+              echo "BADGE_COLOR=31c653" >> $GITHUB_ENV
+              echo "  Bagde color for success"
+              ;;
+            *)
+              echo "BADGE_COLOR=800000" >> $GITHUB_ENV
+              echo "  Bagde color for not success"
+              ;;
+          esac
+        else
+          echo "  Testing was skipped"
+          echo "BADGE_COLOR=31c653" >> $GITHUB_ENV
+          echo "BADGE_STATUS=Skipped" >> $GITHUB_ENV
+        fi
+        echo " "
+
+    - name: Create badge for unit test
+      uses: acme-devs/mulesoft-devops/packages/mule-badge@main
+      if: always()
+      with:
+        label: ${{inputs.badge-label}}
+        status: ${{ env.BADGE_STATUS }}
+        color: ${{ env.BADGE_COLOR }}
+        file: ${{ env.service_name }}-${{inputs.badge-suffix}}.svg
+        folder: ${{ env.service_name }}

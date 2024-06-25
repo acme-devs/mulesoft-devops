@@ -1,0 +1,74 @@
+##########################################################################
+# Mulesoft CICD Pipeline - Deploy Mulesoft Application
+##########################################################################
+
+name: CustomLogging
+on:
+  workflow_call:
+
+env:
+  CONFIGURATIONS_REPOSITORY: common-configurations
+  GLOBAL_CONFIGURATION: _global.yml
+  SECRETS_AZURE_KEYVAULT: MyAzureKeyVaultCA-KV-Mulesoft
+  MESSAGE_SERVICE_SUCCESS_DEPLOYED: "The service was successfully deployed"
+  MESSAGE_SERVICE_INTERNAL_ERROR: "There was an internal error in the deployment process"
+
+jobs:
+
+  CustomLogging:
+    name: CustomLogging
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Get token from Github App
+        id: app-token
+        uses: acme-devs/mulesoft-devops/packages/mule-apptoken@main
+        with:
+          client-id: ${{ secrets.MULESOFT_GITHUBAPP_CLIENTID}}
+          privatekey: ${{ secrets.MULESOFT_GITHUBAPP_PRIVATEKEY }}
+
+      - name: Get secrets from Azure Key Vault
+        id: secrets
+        uses: acme-devs/mulesoft-devops/packages/mule-secrets-azure@main
+        with:
+          keyvault-key: ${{ env.SECRETS_AZURE_KEYVAULT}}
+          azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get service configuration
+        uses: acme-devs/mulesoft-devops/packages/mule-configuration@main
+
+      - name: Get jar file
+        uses: dsaltares/fetch-gh-release-asset@master
+        with:
+          repo: '${{ github.repository }}'
+          version: 'tags/${{ env.deployment_version }}'
+          regex: false
+          file: "${{ env.service_artifact }}-${{ env.deployment_version }}-${{ env.configuration_apptype }}.jar"
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug show root files
+        id: debug-show-root-files
+        shell: bash
+        run: |
+          echo " "
+          echo "***************************************"
+          echo "Debug show root files"
+          echo "***************************************"
+          echo " "
+          ls -l
+
+      - name: Custom Logging
+        id: custom-logging
+        uses: acme-devs/mulesoft-devops/packages/mule-customlog@main
+        with:
+          deployment-env: ${{ env.deployment_environment }}
+
+      - name: Create badge for custom logging
+        uses: acme-devs/mulesoft-devops/packages/mule-badge@main
+        with:
+          label: '${{ env.deployment_environment }} custom log'
+          status: 'true'
+          color: '535597'
+          file: ${{ env.service_name }}-${{ env.deployment_environment }}-cl.svg
+          folder: ${{ env.service_name }}

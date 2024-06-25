@@ -1,0 +1,45 @@
+name: Get token from Github App
+description: Get token from Github App
+inputs:
+  client-id:
+    required: true
+    description: Github App client-id
+  privatekey:
+    required: true
+    description: Github App private key PEM
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Debug github app values
+      shell: bash
+      run: |
+        echo " "
+        echo "***********************************************"
+        echo "Debug github app values"
+        echo "***********************************************"
+        echo "  "
+        echo "  client-id: ${{ inputs.client-id }}"
+        echo "  privatekey: ${{ inputs.privatekey }}"
+        echo " "
+
+    - name: Create a GitHub App installation access token
+      id: app-token
+      uses: peter-murray/workflow-application-token-action@v3
+      with:
+        application_id: ${{ inputs.client-id }}
+        application_private_key: ${{ inputs.privatekey }}
+
+    - name: Verify app token
+      shell: bash
+      run: |
+        echo " "
+        echo "***********************************************"
+        echo "Verify App token"
+        echo "***********************************************"
+        echo "  "
+        echo "  App token: ${{ steps.app-token.outputs.token }}"
+        echo "github_automationbot_token=${{ steps.app-token.outputs.token }}" >> $GITHUB_ENV
+        echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> $GITHUB_ENV
+        echo " "

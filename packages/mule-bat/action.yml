@@ -1,0 +1,44 @@
+name: 'Execute Mulesoft BAT'
+description: 'Execute Mulesoft BAT'
+inputs:
+  deployment-env:
+    required: true
+    description: Deployment environment for the service
+outputs:
+  outcome:
+    description: "The result of the test: success, failure, skipped"
+    value: ${{ steps.run-tests.outputs.outcome }}
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Execute Mulesoft BAT
+      if: ${{ hashFiles('bat') != '' }}
+      shell: bash
+      run: |
+        echo " "
+        echo "***************************************"
+        echo "Install Anypoint CLI"
+        echo "***************************************"
+        echo " "      
+        curl -o- 'https://s3.amazonaws.com/bat-wrapper/install.sh' | bash
+        echo " "
+        echo "bat -version: $(bat -version)"
+
+        bat_executable=$( echo "$deployment_environment.yaml")
+        cd bat
+        mkdir target
+        echo "outcome=failure" >> $GITHUB_OUTPUT      
+        bat $bat_executable
+        echo "outcome=success" >> $GITHUB_OUTPUT
+        echo " "   
+
+    - name: Summary - Test
+      uses: acme-devs/mulesoft-devops/packages/mule-junit@main
+      if: always()
+      with:
+        badge-label: ${{ env.deployment_environment }} test
+        badge-suffix: ${{ env.deployment_environment }}-test
+        path-report: bat/target/JUnit.xml
+        path-directoryreports: bat/target/*

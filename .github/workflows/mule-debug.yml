@@ -1,0 +1,71 @@
+##########################################################################
+# CICD Pipeline
+##########################################################################
+
+name: Debug
+on:
+  workflow_call:
+
+env:
+  CONFIGURATIONS_REPOSITORY: common-configurations
+  GLOBAL_CONFIGURATION: _global.yml
+  SECRETS_AZURE_KEYVAULT: MyAzureKeyVaultCA-KV-Mulesoft
+  MESSAGE_SERVICE_TRIGGER_DEPLOYMENT: The build job triggered the deployment
+
+jobs:
+
+  Debug:
+    name: Build
+    runs-on: ubuntu-latest
+
+    # Assigning permissions to jobs - https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs
+    permissions:
+      actions: write
+      checks: write
+      contents: write
+      deployments: write
+      id-token: write
+      issues: write
+      discussions: write
+      packages: write
+      pages: write
+      pull-requests: write
+      repository-projects: write
+      security-events: write
+      statuses: write
+
+    steps:
+
+      - name: Get token from Github App
+        id: app-token
+        uses: acme-devs/mulesoft-devops/packages/mule-apptoken@main
+        with:
+          client-id: ${{ secrets.MULESOFT_GITHUBAPP_CLIENTID}}
+          privatekey: ${{ secrets.MULESOFT_GITHUBAPP_PRIVATEKEY }}
+
+      - name: Get service configuration
+        uses: acme-devs/mulesoft-devops/packages/mule-configuration@main
+
+      - name: Create a deployment issue
+        id: create-deployment-issue  
+        if: "env.configuration_environments != '' && !contains(env.service_version, 'snapshot')"
+        env:
+          GITHUB_TOKEN: ${{ env.github_automationbot_token }}
+        shell: bash
+        run: |
+          echo " "
+          echo "***********************************************"
+          echo "Create Deployment Issue "
+          echo "***********************************************"
+          echo " "
+          echo "  Create issue for deployment in the first environment from list: $configuration_environments"
+
+          # Environment list to an array
+          read -a array <<< "$configuration_environments"
+          echo "  Environment to deploy the application: ${array[0]}"
+          gh -R "${{ github.repository }}" issue create \
+              -t "Deployment ${array[0]} ${{ env.service_name }} ${{ env.service_version }}" \
+              -a "${{ github.triggering_actor}}" \
+              -b "${{ env.MESSAGE_SERVICE_TRIGGER_DEPLOYMENT }}" \
+              -l "deployment" \
+              -p "${{ env.deployment_project }}"

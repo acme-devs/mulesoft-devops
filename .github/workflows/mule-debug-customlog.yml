@@ -1,0 +1,45 @@
+##########################################################################
+# CICD Pipeline
+##########################################################################
+
+# Configuration for this template:
+# 1.- Replace the predefined repository acme-devs/mulesoft-devops with your own.
+# 2.- Update the global environment variables for the script 
+
+name: Debug
+on:
+  workflow_call:
+    inputs:
+      keyvault-key:
+        required: true
+        description: Access key to KeyVault
+        type: string
+    secrets:
+      azure-credentials:
+        required: true
+        description: Azure Credentials for login
+env:
+  CONFIGURATIONS_REPOSITORY: common-configurations
+  MULE_APPLICATION_TYPE: mule-application-example.jar
+
+jobs:
+
+  ##################################################################
+  # Deployment
+  ##################################################################
+  deployment:
+    name: Deployment
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Get workflow metadata
+        uses: acme-devs/mulesoft-devops/packages/configuration-issuemanagement@main
+        with:
+          keyvault-key: '${{ inputs.keyvault-key }}'
+          azure-credentials: '${{ secrets.azure-credentials }}'
+
+      - name: Set custom logger
+        uses: acme-devs/mulesoft-devops/packages/process-customlogger@main
+        with:
+          deployment-env: ${{ env.deployment_environment }}

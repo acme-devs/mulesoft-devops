@@ -1,0 +1,129 @@
+##########################################################################
+# Scan Maven Dependencies
+##########################################################################
+name: scan-dependencies
+
+on:
+  # schedule:
+    # crontab guru https://crontab.guru/
+    # cron: "0 0 * * 5"
+  workflow_call:
+
+env:
+  CONFIGURATIONS_REPOSITORY: common-configurations
+  GLOBAL_CONFIGURATION: _global.yml
+  SECRETS_AZURE_KEYVAULT: MyAzureKeyVaultCA-KV-Mulesoft
+  ISSUE_MESSAGE: "The service has dependencies that needs to be updated"
+  BADGE_LABEL: "Dependencies"
+  BADGE_STATUS_SUCCESS: "Verified"
+  BADGE_STATUS_INVALID: "Invalid"
+  BADGE_STATUS_SUCCESS_COLOR: "31c653"
+  BADGE_STATUS_INVALID_COLOR: "800000"
+
+jobs:
+  scan-dependencies:
+    name: Scan dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Get token from Github App
+        id: app-token
+        uses: acme-devs/mulesoft-devops/packages/mule-apptoken@main
+        with:
+          client-id: ${{ secrets.MULESOFT_GITHUBAPP_CLIENTID}}
+          privatekey: ${{ secrets.MULESOFT_GITHUBAPP_PRIVATEKEY }}
+
+      - name: Get secrets from Azure Key Vault
+        id: secrets
+        uses: acme-devs/mulesoft-devops/packages/mule-secrets-azure@main
+        with:
+          keyvault-key: ${{ env.SECRETS_AZURE_KEYVAULT}}
+          azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get service configuration
+        uses: acme-devs/mulesoft-devops/packages/mule-configuration@main
+
+      - name: Install Java environment for Mulesoft Applications
+        uses: acme-devs/mulesoft-devops/packages/mule-java@main
+
+      - name: Scan maven dependencies
+        shell: bash
+        run: |
+          echo " "
+          mvn --version
+          echo " "
+          echo "***********************************************"
+          echo "Scan plugins"
+          echo "***********************************************"
+          echo " "
+          SCAN_RESULT=$(mvn versions:display-plugin-updates -Denforcer.skip)
+          ERROR="false"
+
+          if [[ $SCAN_RESULT == *"The following plugin updates are available"* ]]; then
+            echo "  ***********************************************"
+            echo "  Update plugins!!"
+            echo "  ***********************************************"
+            echo " "
+            mvn versions:display-plugin-updates -Denforcer.skip
+            ERROR="true"
+            echo " "
+            echo " "
+            echo " "
+            echo " "
+          else
+            echo "Plugins up to date"
+          fi
+
+          SCAN_RESULT=$(mvn versions:display-dependency-updates -Denforcer.skip)
+          echo " "
+          echo "***********************************************"
+          echo "Scan dependencies"
+          echo "***********************************************"
+          echo " "
+          if [[ $SCAN_RESULT == *"The following dependencies"* ]]; then
+            echo "  ***********************************************"
+            echo "  Update dependencies!!"
+            echo "  ***********************************************"
+            echo " "
+            mvn versions:display-dependency-updates -Denforcer.skip
+            ERROR="true"
+          else
+            echo "Dependencies up to date"
+          fi
+
+          # The GH_TOKEN was exposed as env variable in the app-token action. The next commented code
+          # is used only if We need to use the github CLI with another token
+          # export GH_TOKEN=$github_automationbot_token
+
+          # Get the date for the code badge 
+          current_date=$(date +'%Y-%m-%d')
+          if [[ "$ERROR" = "true" ]]; then
+            echo "  Create a scan-dependencies issue"
+            gh -R "${{ github.repository }}" issue create \
+            -t "scan-dependencies update ${{ env.service_name }} ${{ env.service_version }}" \
+            -a "$configuration_scandependencies_assignees" \
+            -b "${{ env.ISSUE_MESSAGE }}" \
+            -l "$scandependencies_issue_label" \
+            -p "${{ env.deployment_project }}"
+
+            echo " "
+            echo "Project plugins/dependencies should be updated!"
+            echo "dependencies_badge_status=${{ env.BADGE_STATUS_INVALID }} $current_date" >> $GITHUB_ENV
+            echo "dependencies_badge_color=${{ env.BADGE_STATUS_INVALID_COLOR }}" >> $GITHUB_ENV
+
+            exit 1 # terminate and indicate error
+          else
+            echo "dependencies_badge_status=${{ env.BADGE_STATUS_SUCCESS }} $current_date" >> $GITHUB_ENV
+            echo "dependencies_badge_color=${{ env.BADGE_STATUS_SUCCESS_COLOR }}" >> $GITHUB_ENV 
+          fi
+
+      - name: Create badge
+        uses: acme-devs/mulesoft-devops/packages/mule-badge@main
+        if: always()
+        with:
+          label: ${{ env.BADGE_LABEL}}
+          status: ${{ env.dependencies_badge_status }}
+          color: ${{ env.dependencies_badge_color }}
+          file: ${{ env.service_name }}-dependencies.svg
+          folder: ${{ env.service_name }}
